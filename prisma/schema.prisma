@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String               @id @default(cuid())
+  email            String               @unique
+  name             String
+  passwordHash     String
+  avatarUrl        String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  tasks            Task[]
+  categories       Category[]
+  statuses         Status[]
+  tags             Tag[]
+  notifications    Notification[]
+  setting          Setting?
+  pushSubscription PushSubscription[]
+  resetTokens      PasswordResetToken[]
+}
+
+model Status {
+  id     String  @id @default(cuid())
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  color  String
+  order  Int
+  isDone Boolean @default(false)
+  tasks  Task[]
+
+  @@index([userId])
+}
+
+model Category {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  color  String
+  tasks  Task[]
+
+  @@index([userId])
+}
+
+model Tag {
+  id     String    @id @default(cuid())
+  userId String
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  tasks  TaskTag[]
+
+  @@unique([userId, name])
+}
+
+model Task {
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title              String
+  description        String?
+  statusId           String
+  status             Status    @relation(fields: [statusId], references: [id], onDelete: Cascade)
+  priority           String    @default("MEDIUM")
+  categoryId         String?
+  category           Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  dueDate            DateTime?
+  recurrence         String    @default("NONE")
+  recurrenceInterval Int?
+  completedAt        DateTime?
+  order              Int       @default(0)
+  tags               TaskTag[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([userId, statusId])
+  @@index([userId, dueDate])
+}
+
+model TaskTag {
+  taskId String
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, tagId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String?
+  type      String   @default("REMINDER")
+  taskId    String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+model Setting {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme             String  @default("SYSTEM")
+  emailNotification Boolean @default(false)
+  pushNotification  Boolean @default(false)
+  defaultPriority   String  @default("MEDIUM")
+  defaultCategoryId String?
+  reminderEmail     String?
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
