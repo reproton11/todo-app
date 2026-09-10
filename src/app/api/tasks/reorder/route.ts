@@ -32,26 +32,45 @@ export async function POST(req: Request) {
   const reopening = !targetStatus.isDone && task.completedAt !== null;
 
   const result = await prisma.$transaction(async (tx) => {
-    const column = await tx.task.findMany({
+    const target = await tx.task.findMany({
       where: { userId: user.id, statusId, id: { not: id } },
       orderBy: { order: "asc" },
-      select: { id: true },
+      select: { id: true, order: true },
     });
-    column.splice(Math.min(index, column.length), 0, { id });
+    const at = Math.min(Math.max(index, 0), target.length);
+    target.splice(at, 0, { id, order: -1 });
 
-    const updated = await tx.task.update({
-      where: { id },
-      data: {
-        statusId,
-        ...(completing ? { completedAt: new Date() } : {}),
-        ...(reopening ? { completedAt: null } : {}),
-      },
-      include: taskInclude,
-    });
-
-    await Promise.all(
-      column.map((row, i) => tx.task.update({ where: { id: row.id }, data: { order: i } })),
+    // Hanya baris yang posisinya berubah yang ditulis ulang.
+    const renumber = target.flatMap((row, i) =>
+      row.id !== id && row.order !== i ? [tx.task.update({ where: { id: row.id }, data: { order: i } })] : [],
     );
+
+    let vacate: Promise<unknown>[] = [];
+    if (task.statusId !== statusId) {
+      const source = await tx.task.findMany({
+        where: { userId: user.id, statusId: task.statusId, id: { not: id } },
+        orderBy: { order: "asc" },
+        select: { id: true, order: true },
+      });
+      vacate = source.flatMap((row, i) =>
+        row.order !== i ? [tx.task.update({ where: { id: row.id }, data: { order: i } })] : [],
+      );
+    }
+
+    const [updated] = await Promise.all([
+      tx.task.update({
+        where: { id },
+        data: {
+          statusId,
+          order: at,
+          ...(completing ? { completedAt: new Date() } : {}),
+          ...(reopening ? { completedAt: null } : {}),
+        },
+        include: taskInclude,
+      }),
+      ...renumber,
+      ...vacate,
+    ]);
 
     if (completing) await spawnNextOccurrence(tx, updated);
 

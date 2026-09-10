@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FolderKanban, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,15 @@ export function FilterBar({
   const { filters, setFilter, reset } = useTaskFilters();
   const [manageOpen, setManageOpen] = useState(false);
 
+  // Draf lokal agar tiap ketikan tidak me-render ulang tabel; store ditulis setelah jeda.
+  const [draft, setDraft] = useState(filters.q);
+  useEffect(() => setDraft(filters.q), [filters.q]);
+  useEffect(() => {
+    if (draft === filters.q) return;
+    const timer = setTimeout(() => setFilter("q", draft), 300);
+    return () => clearTimeout(timer);
+  }, [draft, filters.q, setFilter]);
+
   const hasActive =
     filters.q || filters.statusId || filters.priority || filters.categoryId || filters.tagId || filters.dueFrom || filters.dueTo;
 
@@ -41,8 +50,8 @@ export function FilterBar({
           ref={searchRef}
           type="search"
           placeholder="Cari judul atau deskripsi... ( / )"
-          value={filters.q}
-          onChange={(e) => setFilter("q", e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           className="h-9 w-full sm:w-64"
           aria-label="Cari tugas"
         />

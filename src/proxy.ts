@@ -5,15 +5,17 @@ const PUBLIC_PATHS = ["/", "/forgot-password", "/reset-password"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const session = await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
 
   if (PUBLIC_PATHS.includes(pathname)) {
-    if (session && pathname === "/") {
+    if (pathname !== "/") return NextResponse.next();
+    const session = await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+    if (session) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
     return NextResponse.next();
   }
 
+  const session = await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
   if (!session) {
     return NextResponse.redirect(new URL("/", req.url));
   }

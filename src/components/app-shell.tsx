@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,7 +25,7 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { ShortcutManager } from "@/components/shortcut-manager";
-import { TaskModal } from "@/components/tasks/task-modal";
+const TaskModal = dynamic(() => import("@/components/tasks/task-modal").then((m) => m.TaskModal));
 import { ShimmerButton } from "@/components/magicui/shimmer-button";
 import { Wordmark } from "@/components/wordmark";
 import { apiFetch } from "@/lib/api-client";

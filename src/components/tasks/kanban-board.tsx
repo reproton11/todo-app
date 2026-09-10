@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -99,12 +99,12 @@ export function KanbanBoard({
     );
     setLocal([...srcCol, ...renumberedTarget, ...others]);
 
+    // Keadaan optimistis dipertahankan; muat ulang hanya saat gagal (mengembalikan posisi).
     try {
       await apiFetch("/api/tasks/reorder", {
         method: "POST",
         body: JSON.stringify({ id: activeTask.id, statusId: targetStatusId, index }),
       });
-      onBoardChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal memindahkan tugas");
       onBoardChanged();
@@ -129,7 +129,7 @@ export function KanbanBoard({
   );
 }
 
-function BoardColumn({ status, items }: { status: StatusData; items: TaskData[] }) {
+const BoardColumn = memo(function BoardColumn({ status, items }: { status: StatusData; items: TaskData[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: status.id });
 
   return (
@@ -163,4 +163,4 @@ function BoardColumn({ status, items }: { status: StatusData; items: TaskData[] 
       </SortableContext>
     </section>
   );
-}
+});

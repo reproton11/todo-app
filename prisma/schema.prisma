@@ -82,6 +82,9 @@ model Task {
 
   @@index([userId, statusId])
   @@index([userId, dueDate])
+  @@index([dueDate])
+  @@index([userId, completedAt])
+  @@index([userId, createdAt])
 }
 
 model TaskTag {
@@ -91,6 +94,8 @@ model TaskTag {
   tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([taskId, tagId])
+
+  @@index([tagId])
 }
 
 model Notification {
@@ -105,6 +110,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+  @@index([taskId, type, createdAt])
 }
 
 model Setting {

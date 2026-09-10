@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { ListChecks, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ import { EmptyState } from "@/components/empty-state";
 import { BlurFade } from "@/components/magicui/blur-fade";
 import { FilterBar } from "@/components/tasks/filter-bar";
 import { TaskTable, BulkBar } from "@/components/tasks/task-table";
-import { TaskModal } from "@/components/tasks/task-modal";
+
+const TaskModal = dynamic(() => import("@/components/tasks/task-modal").then((m) => m.TaskModal));
 import {
   apiFetch,
   type CategoryData,
@@ -45,18 +47,28 @@ export default function TasksPage() {
   const [busy, setBusy] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+
   const load = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setError("");
     try {
-      const res = await apiFetch<{ tasks: TaskData[] }>(`/api/tasks?${filtersToQuery(filters)}`);
+      const res = await apiFetch<{ tasks: TaskData[] }>(`/api/tasks?${filtersToQuery(filters)}`, {
+        signal: controller.signal,
+      });
       setTasks(res.tasks);
       setSelected((prev) => new Set([...prev].filter((id) => res.tasks.some((t) => t.id === id))));
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Gagal memuat tugas");
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) setLoading(false);
     }
   }, [filters]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const loadLookups = useCallback(async () => {
     try {
@@ -94,19 +106,27 @@ export default function TasksPage() {
     };
   }, [load, loadLookups]);
 
-  async function inlineStatus(task: TaskData, statusId: string) {
-    try {
-      const res = await apiFetch<{ task: TaskData; spawned: TaskData | null }>(`/api/tasks/${task.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ statusId }),
-      });
-      if (res.spawned) toast.info(`Tugas berulang berikutnya dibuat: ${res.spawned.title}`);
-      load();
-      window.dispatchEvent(new CustomEvent("tugasku:refresh"));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal mengubah status");
-    }
-  }
+  // Tanpa dispatch tugasku:refresh: halaman ini mendengarkannya sendiri sehingga satu PATCH memicu dua kali muat.
+  const inlineStatus = useCallback(
+    async (task: TaskData, statusId: string) => {
+      try {
+        const res = await apiFetch<{ task: TaskData; spawned: TaskData | null }>(`/api/tasks/${task.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ statusId }),
+        });
+        if (res.spawned) toast.info(`Tugas berulang berikutnya dibuat: ${res.spawned.title}`);
+        load();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Gagal mengubah status");
+      }
+    },
+    [load],
+  );
+
+  const handleEdit = useCallback((task: TaskData) => {
+    setEditing(task);
+    setModalOpen(true);
+  }, []);
 
   async function bulk(payload: { action: "status" | "priority"; statusId?: string; priority?: Priority }) {
     setBusy(true);
@@ -248,10 +268,7 @@ export default function TasksPage() {
           statuses={statuses}
           selected={selected}
           onSelectedChange={setSelected}
-          onEdit={(task) => {
-            setEditing(task);
-            setModalOpen(true);
-          }}
+          onEdit={handleEdit}
           onInlineStatus={inlineStatus}
         />
       )}
@@ -264,7 +281,6 @@ export default function TasksPage() {
         onSaved={() => {
           load();
           loadLookups();
-          window.dispatchEvent(new CustomEvent("tugasku:refresh"));
         }}
       />
 

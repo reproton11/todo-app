@@ -1,26 +1,13 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   CalendarClock,
   CircleCheckBig,
   Flame,
   ListTodo,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { MagicCard } from "@/components/magicui/magic-card";
 import { NumberTicker } from "@/components/magicui/number-ticker";
@@ -28,45 +15,32 @@ import { BorderBeam } from "@/components/magicui/border-beam";
 import { BlurFade } from "@/components/magicui/blur-fade";
 import { PriorityChip } from "@/components/tasks/priority-badge";
 import { DueLabel } from "@/components/tasks/due-label";
-import { apiFetch, type DashboardStats, type TrendPoint } from "@/lib/api-client";
+import { getSessionUser } from "@/lib/auth";
+import { getDashboardStats, getDashboardTrends } from "@/lib/dashboard";
+import type { DashboardStats } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [trends, setTrends] = useState<TrendPoint[]>([]);
-  const [error, setError] = useState("");
+// recharts dimuat setelah HTML tampil agar tidak menahan First Paint.
+import { ActivityChart } from "@/components/dashboard/activity-chart-lazy";
 
-  const load = useCallback(async () => {
-    try {
-      const [s, t] = await Promise.all([
-        apiFetch<{ stats: DashboardStats }>("/api/dashboard/stats"),
-        apiFetch<{ days: TrendPoint[] }>("/api/dashboard/trends?days=14"),
-      ]);
-      setStats(s.stats);
-      setTrends(t.days);
-      setError("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat dasbor");
-    }
-  }, []);
+export default async function DashboardPage() {
+  const user = await getSessionUser();
+  if (!user) redirect("/");
 
-  useEffect(() => {
-    load();
-    const onRefresh = () => void load();
-    window.addEventListener("tugasku:refresh", onRefresh);
-    return () => window.removeEventListener("tugasku:refresh", onRefresh);
-  }, [load]);
-
-  if (error) {
+  let stats: DashboardStats;
+  let trends: { date: string; created: number; completed: number }[];
+  try {
+    [stats, trends] = await Promise.all([getDashboardStats(user.id), getDashboardTrends(user.id, 14)]);
+  } catch {
     return (
       <div className="mx-auto w-full max-w-6xl">
         <EmptyState
           icon={ListTodo}
           title="Tidak bisa memuat dasbor"
-          description={error}
+          description="Terjadi gangguan saat mengambil data."
           action={
-            <Button variant="outline" onClick={() => void load()}>
-              Coba lagi
+            <Button variant="outline" asChild>
+              <a href="/dashboard">Coba lagi</a>
             </Button>
           }
         />
@@ -88,29 +62,29 @@ export default function DashboardPage() {
           <StatCard
             icon={ListTodo}
             label="Total Tugas"
-            value={stats?.total}
+            value={stats.total}
             hint="semua tugas tercatat"
           />
           <StatCard
             icon={CircleCheckBig}
             label="Selesai Hari Ini"
-            value={stats?.completedToday}
+            value={stats.completedToday}
             hint="tugas diselesaikan hari ini"
             accent
           />
           <StatCard
             icon={CalendarClock}
             label="Belum Selesai"
-            value={stats?.pending}
+            value={stats.pending}
             hint={
-              stats && stats.overdue > 0 ? `${stats.overdue} terlambat` : "semua masih terkendali"
+              stats.overdue > 0 ? `${stats.overdue} terlambat` : "semua masih terkendali"
             }
-            danger={!!stats && stats.overdue > 0}
+            danger={stats.overdue > 0}
           />
           <StatCard
             icon={Flame}
             label="Streak"
-            value={stats?.streak}
+            value={stats.streak}
             hint="hari berturut-turut selesai ada tugas"
             beam
           />
@@ -124,45 +98,7 @@ export default function DashboardPage() {
             <CardTitle className="text-base">Aktivitas 14 hari terakhir</CardTitle>
           </CardHeader>
           <CardContent>
-            {trends.length === 0 ? (
-              <Skeleton className="h-56 w-full" />
-            ) : (
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={trends} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 11 }}
-                      tickFormatter={(d: string) =>
-                        new Date(`${d}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
-                      }
-                      stroke="var(--muted-foreground)"
-                    />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                    <Tooltip
-                      cursor={{ fill: "var(--secondary)" }}
-                      contentStyle={{
-                        background: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      labelFormatter={(d) =>
-                        new Date(`${String(d)}T00:00:00`).toLocaleDateString("id-ID", {
-                          weekday: "long",
-                          day: "numeric",
-                          month: "long",
-                        })
-                      }
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="created" name="Dibuat" fill="var(--chart-2)" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="completed" name="Selesai" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
+            <ActivityChart data={trends} />
           </CardContent>
         </Card>
 
@@ -171,13 +107,7 @@ export default function DashboardPage() {
             <CardTitle className="text-base">Tenggat terdekat</CardTitle>
           </CardHeader>
           <CardContent>
-            {!stats ? (
-              <div className="grid gap-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : stats.upcoming.length === 0 ? (
+            {stats.upcoming.length === 0 ? (
               <p className="py-4 text-center text-sm text-muted-foreground">
                 Tidak ada tenggat mendekat. Nikmati harimu.
               </p>

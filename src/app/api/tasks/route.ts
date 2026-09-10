@@ -83,18 +83,21 @@ export async function POST(req: Request) {
   }
   const data = parsed.data;
 
-  const status = await prisma.status.findFirst({ where: { id: data.statusId, userId: user.id } });
+  const [status, category] = await Promise.all([
+    prisma.status.findFirst({ where: { id: data.statusId, userId: user.id } }),
+    data.categoryId
+      ? prisma.category.findFirst({ where: { id: data.categoryId, userId: user.id } })
+      : null,
+  ]);
   if (!status) return NextResponse.json({ error: "Status tidak ditemukan" }, { status: 400 });
-
-  if (data.categoryId) {
-    const category = await prisma.category.findFirst({
-      where: { id: data.categoryId, userId: user.id },
-    });
-    if (!category) return NextResponse.json({ error: "Kategori tidak ditemukan" }, { status: 400 });
+  if (data.categoryId && !category) {
+    return NextResponse.json({ error: "Kategori tidak ditemukan" }, { status: 400 });
   }
 
-  const order = await nextOrderForStatus(user.id, data.statusId);
-  const tagIds = await resolveTagIds(user.id, data.tags ?? []);
+  const [order, tagIds] = await Promise.all([
+    nextOrderForStatus(user.id, data.statusId),
+    resolveTagIds(user.id, data.tags ?? []),
+  ]);
 
   const task = await prisma.task.create({
     data: {

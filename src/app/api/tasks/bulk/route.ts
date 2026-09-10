@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser, isSameOrigin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { firstZodMessage, serializeTask, taskInclude } from "@/lib/task-utils";
+import { firstZodMessage } from "@/lib/task-utils";
 import { isPriority } from "@/lib/priority";
 import { z } from "zod";
 
@@ -42,25 +42,25 @@ export async function POST(req: Request) {
   const newStatus = await prisma.status.findFirst({ where: { id: statusId, userId: user.id } });
   if (!newStatus) return NextResponse.json({ error: "Status tidak ditemukan" }, { status: 400 });
 
-  const tasks = await prisma.task.findMany({ where: owned, include: taskInclude });
-  let affected = 0;
-  for (const task of tasks) {
-    const completing = newStatus.isDone && !task.status.isDone;
-    const reopening = !newStatus.isDone && task.completedAt !== null;
-    await prisma.task.update({
-      where: { id: task.id },
-      data: {
-        statusId,
-        ...(completing ? { completedAt: new Date() } : {}),
-        ...(reopening ? { completedAt: null } : {}),
-      },
-    });
-    affected++;
-  }
-
-  const updated = await prisma.task.findMany({
-    where: { id: { in: tasks.map((t) => t.id) }, userId: user.id },
-    include: taskInclude,
+  const targets = await prisma.task.findMany({
+    where: owned,
+    select: { id: true, completedAt: true, status: { select: { isDone: true } } },
   });
-  return NextResponse.json({ ok: true, affected, tasks: updated.map(serializeTask) });
+  const completing = targets.filter((t) => newStatus.isDone && !t.status.isDone).map((t) => t.id);
+  const reopening = targets.filter((t) => !newStatus.isDone && t.completedAt !== null).map((t) => t.id);
+  const plain = targets
+    .filter((t) => !completing.includes(t.id) && !reopening.includes(t.id))
+    .map((t) => t.id);
+
+  await prisma.$transaction([
+    ...(plain.length ? [prisma.task.updateMany({ where: { id: { in: plain } }, data: { statusId } })] : []),
+    ...(completing.length
+      ? [prisma.task.updateMany({ where: { id: { in: completing } }, data: { statusId, completedAt: new Date() } })]
+      : []),
+    ...(reopening.length
+      ? [prisma.task.updateMany({ where: { id: { in: reopening } }, data: { statusId, completedAt: null } })]
+      : []),
+  ]);
+  // Klien memuat ulang daftar sendiri, jadi tanpa baca ulang di sini.
+  return NextResponse.json({ ok: true, affected: targets.length });
 }

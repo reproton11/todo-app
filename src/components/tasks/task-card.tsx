@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import Link from "next/link";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -11,7 +12,7 @@ import { PRIORITY_META } from "@/lib/priority";
 import type { TaskData } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
-export function TaskCard({ task }: { task: TaskData }) {
+export const TaskCard = memo(function TaskCard({ task }: { task: TaskData }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { statusId: task.status.id },
@@ -70,4 +71,4 @@ export function TaskCard({ task }: { task: TaskData }) {
       </MagicCard>
     </div>
   );
-}
+});

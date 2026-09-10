@@ -1,13 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { SquareKanban, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { KanbanBoard } from "@/components/tasks/kanban-board";
 import { StatusManager } from "@/components/tasks/status-manager";
 import { apiFetch, type StatusData, type TaskData } from "@/lib/api-client";
+
+const KanbanBoard = dynamic(() => import("@/components/tasks/kanban-board").then((m) => m.KanbanBoard), {
+  ssr: false,
+  loading: () => (
+    <div className="flex gap-4 overflow-hidden" aria-hidden>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-96 w-72 shrink-0" />
+      ))}
+    </div>
+  ),
+});
 
 export default function BoardPage() {
   const [statuses, setStatuses] = useState<StatusData[]>([]);

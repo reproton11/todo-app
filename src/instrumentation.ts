@@ -8,10 +8,17 @@ export async function register() {
 
   const { runReminderScan } = await import("@/lib/reminders");
 
+  let running = false;
   g.reminderTimer = setInterval(() => {
-    runReminderScan().catch((err) => {
-      console.error("[reminder-scheduler] gagal:", err);
-    });
+    if (running) return;
+    running = true;
+    runReminderScan()
+      .catch((err) => {
+        console.error("[reminder-scheduler] gagal:", err);
+      })
+      .finally(() => {
+        running = false;
+      });
   }, 60_000);
 
   console.log("[reminder-scheduler] aktif: memeriksa pengingat setiap 60 detik");

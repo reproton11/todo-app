@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, Pencil } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,22 +39,41 @@ export function TaskTable({
   tasks: TaskData[];
   statuses: StatusData[];
   selected: Set<string>;
-  onSelectedChange: (next: Set<string>) => void;
+  onSelectedChange: React.Dispatch<React.SetStateAction<Set<string>>>;
   onEdit: (task: TaskData) => void;
   onInlineStatus: (task: TaskData, statusId: string) => void;
 }) {
   const { filters, setFilter } = useTaskFilters();
+  const [visible, setVisible] = useState(100);
+  useEffect(() => setVisible(100), [tasks]);
+  const shown = tasks.slice(0, visible);
 
-  function toggleAll(checked: boolean) {
-    onSelectedChange(checked ? new Set(tasks.map((t) => t.id)) : new Set());
-  }
+  const toggleAll = useCallback(
+    (checked: boolean) => {
+      onSelectedChange(checked ? new Set(tasks.map((t) => t.id)) : new Set());
+    },
+    [onSelectedChange, tasks],
+  );
 
-  function toggleOne(id: string, checked: boolean) {
-    const next = new Set(selected);
-    if (checked) next.add(id);
-    else next.delete(id);
-    onSelectedChange(next);
-  }
+  const toggleOne = useCallback(
+    (id: string, checked: boolean) => {
+      onSelectedChange((prev) => {
+        const next = new Set(prev);
+        if (checked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    },
+    [onSelectedChange],
+  );
+
+  const changeSort = useCallback(
+    (field: SortField) => {
+      if (filters.sort === field) setFilter("dir", filters.dir === "asc" ? "desc" : "asc");
+      else setFilter("sort", field);
+    },
+    [filters.sort, filters.dir, setFilter],
+  );
 
   function sortButton(field: SortField, label: string) {
     const active = filters.sort === field;
@@ -62,10 +82,7 @@ export function TaskTable({
         variant="ghost"
         size="sm"
         className="-ml-2 h-7 gap-1 font-medium"
-        onClick={() => {
-          if (active) setFilter("dir", filters.dir === "asc" ? "desc" : "asc");
-          else setFilter("sort", field);
-        }}
+        onClick={() => changeSort(field)}
         aria-label={`Urutkan berdasarkan ${label}`}
       >
         {label}
@@ -102,101 +119,132 @@ export function TaskTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((task) => {
-            const done = task.status.isDone;
-            return (
-              <TableRow key={task.id} data-selected={selected.has(task.id)} className="data-[selected=true]:bg-secondary/50">
-                <TableCell>
-                  <Checkbox
-                    aria-label={`Pilih tugas ${task.title}`}
-                    checked={selected.has(task.id)}
-                    onCheckedChange={(v) => toggleOne(task.id, v === true)}
-                  />
-                </TableCell>
-                <TableCell className="max-w-72">
-                  <div className="space-y-1">
-                    <Link
-                      href={`/tasks/${task.id}`}
-                      className={cn(
-                        "line-clamp-2 font-medium underline-offset-4 hover:underline",
-                        done && "text-muted-foreground line-through",
-                      )}
-                    >
-                      {task.title}
-                    </Link>
-                    {(task.tags.length > 0 || task.description) && (
-                      <div className="flex flex-wrap items-center gap-1">
-                        {task.tags.map((t) => (
-                          <span key={t.id} className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                            #{t.name}
-                          </span>
-                        ))}
-                        {task.description && (
-                          <span className="hidden text-xs text-muted-foreground xl:inline">
-                            {task.description.slice(0, 60)}
-                            {task.description.length > 60 ? "..." : ""}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {task.category ? (
-                    <ColoredChip color={task.category.color} label={task.category.name} />
-                  ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  )}
-                </TableCell>
-                <TableCell className="hidden sm:table-cell">
-                  <PriorityChip priority={task.priority} />
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-sm">
-                  <DueLabel iso={task.dueDate} />
-                </TableCell>
-                <TableCell>
-                  <Select value={task.status.id} onValueChange={(v) => onInlineStatus(task, v)}>
-                    <SelectTrigger
-                      size="sm"
-                      className="w-full min-w-32 sm:w-40"
-                      aria-label={`Ubah status tugas ${task.title}`}
-                    >
-                      <span className="flex items-center gap-1.5 truncate">
-                        <span
-                          className="size-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: task.status.color }}
-                          aria-hidden
-                        />
-                        <SelectValue />
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statuses.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    aria-label={`Ubah tugas ${task.title}`}
-                    onClick={() => onEdit(task)}
-                  >
-                    <Pencil className="size-4" aria-hidden />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            );
-          })}
+          {shown.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              statuses={statuses}
+              checked={selected.has(task.id)}
+              onToggle={toggleOne}
+              onEdit={onEdit}
+              onInlineStatus={onInlineStatus}
+            />
+          ))}
         </TableBody>
       </Table>
+      {tasks.length > visible && (
+        <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            Menampilkan {visible} dari {tasks.length} tugas
+          </p>
+          <Button size="sm" variant="outline" onClick={() => setVisible((v) => v + 100)}>
+            Tampilkan lebih banyak
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
+
+const TaskRow = memo(function TaskRow({
+  task,
+  statuses,
+  checked,
+  onToggle,
+  onEdit,
+  onInlineStatus,
+}: {
+  task: TaskData;
+  statuses: StatusData[];
+  checked: boolean;
+  onToggle: (id: string, checked: boolean) => void;
+  onEdit: (task: TaskData) => void;
+  onInlineStatus: (task: TaskData, statusId: string) => void;
+}) {
+  const done = task.status.isDone;
+  return (
+    <TableRow data-selected={checked} className="data-[selected=true]:bg-secondary/50">
+      <TableCell>
+        <Checkbox
+          aria-label={`Pilih tugas ${task.title}`}
+          checked={checked}
+          onCheckedChange={(v) => onToggle(task.id, v === true)}
+        />
+      </TableCell>
+      <TableCell className="max-w-72">
+        <div className="space-y-1">
+          <Link
+            href={`/tasks/${task.id}`}
+            className={cn(
+              "line-clamp-2 font-medium underline-offset-4 hover:underline",
+              done && "text-muted-foreground line-through",
+            )}
+          >
+            {task.title}
+          </Link>
+          {(task.tags.length > 0 || task.description) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {task.tags.map((t) => (
+                <span key={t.id} className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                  #{t.name}
+                </span>
+              ))}
+              {task.description && (
+                <span className="hidden text-xs text-muted-foreground xl:inline">
+                  {task.description.slice(0, 60)}
+                  {task.description.length > 60 ? "..." : ""}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="hidden md:table-cell">
+        {task.category ? (
+          <ColoredChip color={task.category.color} label={task.category.name} />
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        )}
+      </TableCell>
+      <TableCell className="hidden sm:table-cell">
+        <PriorityChip priority={task.priority} />
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm">
+        <DueLabel iso={task.dueDate} />
+      </TableCell>
+      <TableCell>
+        <Select value={task.status.id} onValueChange={(v) => onInlineStatus(task, v)}>
+          <SelectTrigger
+            size="sm"
+            className="w-full min-w-32 sm:w-40"
+            aria-label={`Ubah status tugas ${task.title}`}
+          >
+            <span className="flex items-center gap-1.5 truncate">
+              <span
+                className="size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: task.status.color }}
+                aria-hidden
+              />
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            {statuses.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell>
+        <Button size="icon" variant="ghost" aria-label={`Ubah tugas ${task.title}`} onClick={() => onEdit(task)}>
+          <Pencil className="size-4" aria-hidden />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
 
 export function BulkBar({
   count,
